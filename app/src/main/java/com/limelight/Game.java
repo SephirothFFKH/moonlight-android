@@ -1,6 +1,12 @@
 package com.limelight;
 
 
+import com.leiainc.androidsdk.core.QuadView;
+import com.leiainc.androidsdk.core.SurfaceTextureReadyCallback;
+import com.leiainc.androidsdk.display.LeiaDisplayManager;
+import com.leiainc.androidsdk.display.LeiaSDK;
+import com.leiainc.androidsdk.sbs.video.SbsVideoSurfaceRenderer;
+import com.leiainc.androidsdk.sbs.video.TextureShape;
 import com.limelight.binding.PlatformBinding;
 import com.limelight.binding.input.ControllerHandler;
 import com.limelight.binding.input.KeyboardTranslator;
@@ -89,7 +95,7 @@ import java.util.Locale;
 
 public class Game extends Activity implements TextureView.SurfaceTextureListener, View.OnLayoutChangeListener, OnGenericMotionListener, OnTouchListener,
     NvConnectionListener, EvdevListener, OnSystemUiVisibilityChangeListener, GameGestures,
-    StreamView.InputCallbacks, PerfOverlayListener
+    StreamView.InputCallbacks, PerfOverlayListener, SurfaceTextureReadyCallback
 {
     private int lastButtonState = 0;
 
@@ -128,6 +134,7 @@ public class Game extends Activity implements TextureView.SurfaceTextureListener
     private boolean grabComboDown = false;
     private StreamView streamView;
     private Surface streamSurface;
+    private SbsVideoSurfaceRenderer sbsVideoSurfaceRenderer = null;
 
     private long lastAbsTouchUpTime = 0;
     private long lastAbsTouchDownTime = 0;
@@ -232,6 +239,8 @@ public class Game extends Activity implements TextureView.SurfaceTextureListener
 
         // Listen for events on the game surface
         streamView = findViewById(R.id.surfaceView);
+        QuadView quadView = findViewById(R.id.quad_view);
+        quadView.getInputSurfaceTexture(this);
         streamView.setOnGenericMotionListener(this);
         streamView.setOnTouchListener(this);
         streamView.setInputCallbacks(this);
@@ -629,6 +638,10 @@ public class Game extends Activity implements TextureView.SurfaceTextureListener
         WindowManager.LayoutParams windowLayoutParams = getWindow().getAttributes();
         float displayRefreshRate;
 
+        LeiaDisplayManager displayManager = LeiaSDK.getDisplayManager(this);
+        displayManager.requestBacklightMode(LeiaDisplayManager.BacklightMode.MODE_3D);
+
+
         // On M, we can explicitly set the optimal display mode
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Display.Mode bestMode = display.getMode();
@@ -921,6 +934,7 @@ public class Game extends Activity implements TextureView.SurfaceTextureListener
                         .apply();
             }
         }
+        sbsVideoSurfaceRenderer.release();
 
         finish();
     }
@@ -1513,6 +1527,10 @@ public class Game extends Activity implements TextureView.SurfaceTextureListener
     }
 
     private void stopConnection() {
+
+        LeiaDisplayManager displayManager = LeiaSDK.getDisplayManager(this);
+        displayManager.requestBacklightMode(LeiaDisplayManager.BacklightMode.MODE_2D);
+
         if (connecting || connected) {
             connecting = connected = false;
 
@@ -1698,6 +1716,7 @@ public class Game extends Activity implements TextureView.SurfaceTextureListener
 
                 hideSystemUi(1000);
             }
+
         });
     }
 
@@ -1879,5 +1898,22 @@ public class Game extends Activity implements TextureView.SurfaceTextureListener
 
         onSurfaceTextureAvailable(streamView.getSurfaceTexture(),  right - left, bottom - top);
 
+    }
+
+    @Override
+    public void onSurfaceTextureReady(SurfaceTexture surfaceTexture) {
+        if (sbsVideoSurfaceRenderer == null) {
+            sbsVideoSurfaceRenderer = new SbsVideoSurfaceRenderer(
+                    this,
+                    new Surface(surfaceTexture),
+                    TextureShape.LANDSCAPE,
+                    (surfaceData) -> {
+                        configureStreamer(surfaceData);
+                    });
+        }
+    }
+
+    private void configureStreamer(SurfaceTexture surfaceData) {
+        streamView.setSurfaceTexture(surfaceData);
     }
 }
